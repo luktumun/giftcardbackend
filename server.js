@@ -11,24 +11,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Serve static images
+// Static image path
 const __dirname = path.resolve();
 app.use("/images", express.static(path.join(__dirname, "public/images")));
 
-// ✅ MongoDB connection
+// ✅ MongoDB Connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
-// 🎁 Gift card data (use images from backend)
+// 🎁 Gift cards data
 const giftCards = [
   {
     id: 1,
     brand: "EasyMyTrip Hotels Gift Card",
     value: "₹500",
     expiry: "22 Oct 2026",
-    payable: "₹470",
+    payable: 470,
     image: "/images/easymytrip.png",
   },
   {
@@ -36,76 +36,88 @@ const giftCards = [
     brand: "Resonate Gift Card",
     value: "₹1000",
     expiry: "22 Oct 2026",
-    payable: "₹830",
+    payable: 830,
     image: "/images/resonategiftcard.png",
   },
 ];
 
-// 🟢 Get all cards (for frontend)
-app.get("/api/cards", (req, res) => res.json(giftCards));
-
-// 🟢 Step 1: Create order
-app.post("/api/create-order", async (req, res) => {
-  const { email, cardId } = req.body;
-  const card = giftCards.find((c) => c.id === cardId);
-  if (!card)
-    return res.status(404).json({ success: false, message: "Card not found" });
-
-  const orderId = `ORDER_${Date.now()}`;
-
-  // ✅ Include all required fields for Payment schema
-  await Payment.create({
-    email,
-    orderId,
-    cardId,
-    brand: card.brand,
-    value: card.value,
-    amount: card.payable,
-    image: card.image,
-    expiry: card.expiry,
-    upi: process.env.PAYTM_UPI_ID,
-    status: "pending",
-  });
-
-  return res.json({
-    success: true,
-    qrImage: process.env.PAYTM_QR, // static QR code image
-    upi: process.env.PAYTM_UPI_ID,
-    orderId,
-    amount: card.payable,
-  });
+// 🟢 Fetch all cards
+app.get("/api/cards", (req, res) => {
+  res.json(giftCards);
 });
 
-// 🟢 Step 2: Verify payment (manual txnId)
-app.post("/api/verify-payment", async (req, res) => {
-  const { email, txnId, orderId, cardId } = req.body;
-  if (!email || !txnId)
-    return res.status(400).json({ success: false, message: "Missing details" });
-
+// 🟢 Step 1: Create Order and Generate QR (with payable amount)
+app.post("/api/create-order", async (req, res) => {
   try {
+    const { email, cardId } = req.body;
+    const card = giftCards.find((c) => c.id === cardId);
+    if (!card)
+      return res
+        .status(404)
+        .json({ success: false, message: "Card not found" });
+
+    const orderId = `ORDER_${Date.now()}`;
+    const upiId = process.env.PAYTM_UPI_ID;
+    const payable = card.payable;
+
+    // Generate dynamic UPI QR URL
+    const upiLink = `upi://pay?pa=${upiId}&pn=GiftCardStore&am=${payable}&tn=GiftCard_${orderId}`;
+    const qrImage = `${process.env.QR_API_URL}${encodeURIComponent(upiLink)}`; // use QR API to generate image
+
+    // Save payment record
+    await Payment.create({
+      email,
+      orderId,
+      cardId,
+      brand: card.brand,
+      value: card.value,
+      amount: payable,
+      image: card.image,
+      expiry: card.expiry,
+      upi: upiId,
+      status: "pending",
+    });
+
+    res.json({
+      success: true,
+      orderId,
+      qrImage,
+      upi: upiId,
+      amount: payable,
+    });
+  } catch (err) {
+    console.error("❌ Error creating order:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// 🟢 Step 2: Simulate automatic Paytm verification (for demo)
+app.post("/api/verify-payment", async (req, res) => {
+  try {
+    const { orderId } = req.body;
     const payment = await Payment.findOne({ orderId });
+
     if (!payment)
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
+    if (payment.status === "verified")
+      return res.json({ success: false, message: "Already verified" });
 
-    const existingTxn = await Payment.findOne({ txnId });
-    if (existingTxn)
-      return res.json({ success: false, message: "Transaction already used" });
-
+    // Simulate verification (✅ Auto-success for demo)
     payment.status = "verified";
-    payment.txnId = txnId;
+    payment.txnId = `TXN${Date.now()}`;
     await payment.save();
 
-    const card = giftCards.find((c) => c.id === cardId);
-    if (card) await sendGiftCardEmail(email, card);
+    const card = giftCards.find((c) => c.id === payment.cardId);
+    if (card) await sendGiftCardEmail(payment.email, card);
 
     res.json({
       success: true,
-      message: "✅ Payment verified! Gift card sent via email.",
+      message: "✅ Payment verified & gift card sent!",
     });
   } catch (err) {
-    console.error("Error verifying:", err);
+    console.error("❌ Verification Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });

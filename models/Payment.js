@@ -2,56 +2,23 @@ import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
   {
-    email: {
-      type: String,
-      required: [true, "Email is required"],
-      trim: true,
-    },
-    orderId: {
-      type: String,
-      required: [true, "Order ID is required"],
-      unique: true,
-    },
-    cardId: {
-      type: Number,
-      required: [true, "Gift card ID is required"],
-    },
-    brand: {
-      type: String,
-      required: [true, "Gift card brand is required"],
-    },
-    value: {
-      type: String,
-      required: [true, "Gift card value is required"],
-    },
-    amount: {
-      type: String,
-      required: [true, "Amount is required"],
-    },
-    image: {
-      type: String,
-      required: [true, "Gift card image is required"],
-    },
-    expiry: {
-      type: String,
-      required: [true, "Expiry date is required"],
-    },
-    upi: {
-      type: String,
-      required: [true, "UPI ID is required"],
-    },
-    txnId: {
-      type: String,
-      default: null,
-    },
+    email: { type: String, required: true },
+    orderId: { type: String, required: true, unique: true },
+    cardId: { type: Number, required: true },
+    brand: { type: String, required: true },
+    value: { type: String, required: true },
+    amount: { type: Number, required: true },
+    image: { type: String, required: true },
+    expiry: { type: String, required: true },
+    upi: { type: String, required: true },
+    txnId: { type: String },
     status: {
       type: String,
-      enum: ["pending", "verified", "soldout"],
+      enum: ["pending", "verified", "failed"],
       default: "pending",
     },
   },
   { timestamps: true }
 );
 
-const Payment = mongoose.model("Payment", paymentSchema);
-export default Payment;
+export default mongoose.model("Payment", paymentSchema);
