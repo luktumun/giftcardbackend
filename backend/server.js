@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import path from "path";
 import Payment from "./models/Payment.js";
 import { sendGiftCardEmail } from "./utils/sendEmail.js";
 
@@ -10,13 +11,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Connect to MongoDB
+// ✅ Serve static images
+const __dirname = path.resolve();
+app.use("/images", express.static(path.join(__dirname, "public/images")));
+
+// ✅ MongoDB connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
-// 🎁 Static gift cards
+// 🎁 Gift card data (use images from backend)
 const giftCards = [
   {
     id: 1,
@@ -24,8 +29,7 @@ const giftCards = [
     value: "₹500",
     expiry: "22 Oct 2026",
     payable: "₹470",
-    image:
-      "https://www.dropbox.com/scl/fi/x8ohhl0z5g88eew3rb4ab/easymytrip.png?rlkey=0v2i8vfj30f8ltjexpb56lo0m&st=xkpwjqkn&raw=1",
+    image: "/images/easymytrip.png",
   },
   {
     id: 2,
@@ -33,20 +37,21 @@ const giftCards = [
     value: "₹1000",
     expiry: "22 Oct 2026",
     payable: "₹830",
-    image:
-      "https://www.dropbox.com/scl/fi/pxcih0ejv03yc0jf2b5or/resonategiftcard.png?rlkey=igue5elo0p7bll2axuvsy81ys&st=oenogrg3&raw=1",
+    image: "/images/resonategiftcard.png",
   },
 ];
 
-// 🟢 Step 1: Send QR + UPI ID for manual payment
+// 🟢 Get all cards (for frontend)
+app.get("/api/cards", (req, res) => res.json(giftCards));
+
+// 🟢 Step 1: Create order
 app.post("/api/create-order", async (req, res) => {
   const { email, cardId } = req.body;
   const card = giftCards.find((c) => c.id === cardId);
-  if (!card) return res.status(404).json({ message: "Card not found" });
+  if (!card)
+    return res.status(404).json({ success: false, message: "Card not found" });
 
   const orderId = `ORDER_${Date.now()}`;
-
-  // Save pending record
   await Payment.create({
     email,
     orderId,
@@ -58,55 +63,48 @@ app.post("/api/create-order", async (req, res) => {
 
   return res.json({
     success: true,
-    qrImage: process.env.PAYTM_QR, // use static QR image
+    qrImage: process.env.PAYTM_QR, // static QR code in .env
     upi: process.env.PAYTM_UPI_ID,
     orderId,
     amount: card.payable,
   });
 });
 
-// 🟢 Step 2: Verify payment manually via txnId
+// 🟢 Step 2: Verify payment (manual txnId)
 app.post("/api/verify-payment", async (req, res) => {
   const { email, txnId, orderId, cardId } = req.body;
   if (!email || !txnId)
-    return res.status(400).json({ message: "Missing details" });
+    return res.status(400).json({ success: false, message: "Missing details" });
 
   try {
-    // ⚙️ Simple simulated verification
     const payment = await Payment.findOne({ orderId });
     if (!payment)
       return res
         .status(404)
         .json({ success: false, message: "Order not found" });
 
-    // Avoid duplicate txnId
     const existingTxn = await Payment.findOne({ txnId });
     if (existingTxn)
-      return res.json({
-        success: false,
-        message: "This transaction already used",
-      });
+      return res.json({ success: false, message: "Transaction already used" });
 
-    // Mark as verified directly (manual model)
     payment.status = "verified";
     payment.txnId = txnId;
     await payment.save();
 
-    // Send gift card via email
     const card = giftCards.find((c) => c.id === cardId);
     if (card) await sendGiftCardEmail(email, card);
 
-    return res.json({
+    res.json({
       success: true,
-      message: "✅ Payment marked verified and gift card emailed!",
+      message: "✅ Payment verified! Gift card sent via email.",
     });
-  } catch (error) {
-    console.error("Verification error:", error);
+  } catch (err) {
+    console.error("Error verifying:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// 🟢 Admin: view all payments
+// 🟢 View all payments
 app.get("/api/payments", async (req, res) => {
   const payments = await Payment.find().sort({ createdAt: -1 });
   res.json(payments);
