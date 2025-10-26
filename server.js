@@ -52,18 +52,24 @@ app.post("/api/create-order", async (req, res) => {
     return res.status(404).json({ success: false, message: "Card not found" });
 
   const orderId = `ORDER_${Date.now()}`;
+
+  // ✅ Include all required fields for Payment schema
   await Payment.create({
     email,
     orderId,
     cardId,
     brand: card.brand,
     value: card.value,
+    amount: card.payable,
+    image: card.image,
+    expiry: card.expiry,
+    upi: process.env.PAYTM_UPI_ID,
     status: "pending",
   });
 
   return res.json({
     success: true,
-    qrImage: process.env.PAYTM_QR, // static QR code in .env
+    qrImage: process.env.PAYTM_QR, // static QR code image
     upi: process.env.PAYTM_UPI_ID,
     orderId,
     amount: card.payable,

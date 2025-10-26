@@ -4,65 +4,54 @@ const paymentSchema = new mongoose.Schema(
   {
     email: {
       type: String,
-      required: true,
+      required: [true, "Email is required"],
       trim: true,
-    },
-    cardId: {
-      type: String,
-      required: true,
-    },
-    brand: {
-      type: String,
-      required: true,
-    },
-    value: {
-      type: String,
-      required: true,
-    },
-    expiry: {
-      type: String,
-      required: true,
-    },
-    image: {
-      type: String,
-      required: true,
-    },
-    upi: {
-      type: String,
-      required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
     },
     orderId: {
       type: String,
-      required: true,
+      required: [true, "Order ID is required"],
       unique: true,
+    },
+    cardId: {
+      type: Number,
+      required: [true, "Gift card ID is required"],
+    },
+    brand: {
+      type: String,
+      required: [true, "Gift card brand is required"],
+    },
+    value: {
+      type: String,
+      required: [true, "Gift card value is required"],
+    },
+    amount: {
+      type: String,
+      required: [true, "Amount is required"],
+    },
+    image: {
+      type: String,
+      required: [true, "Gift card image is required"],
+    },
+    expiry: {
+      type: String,
+      required: [true, "Expiry date is required"],
+    },
+    upi: {
+      type: String,
+      required: [true, "UPI ID is required"],
     },
     txnId: {
       type: String,
-      default: "",
+      default: null,
     },
     status: {
       type: String,
-      enum: ["pending", "paid", "verified", "failed"],
+      enum: ["pending", "verified", "soldout"],
       default: "pending",
-    },
-    verifiedAt: {
-      type: Date,
     },
   },
   { timestamps: true }
 );
 
-// Optional helper method to mark payment verified
-paymentSchema.methods.markAsVerified = async function (txnId) {
-  this.txnId = txnId;
-  this.status = "verified";
-  this.verifiedAt = new Date();
-  await this.save();
-  return this;
-};
-
-export default mongoose.model("Payment", paymentSchema);
+const Payment = mongoose.model("Payment", paymentSchema);
+export default Payment;
